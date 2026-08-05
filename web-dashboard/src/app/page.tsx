@@ -1,6 +1,20 @@
 'use client';
 import { useEffect, useState } from 'react';
+import useSWR from 'swr';
+import { evaluateMetric } from '@/lib/thresholds';
 
+const fetcher = async (url: string) => {
+    const t0 = performance.now();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Fetch failed');
+    const data = await res.json();
+    data._pollMs = Math.round(performance.now() - t0);
+    return data;
+};
+
+// =========================================================================
+// TYPES
+// =========================================================================
 type TelemetryLog = {
     ambientTemp: number;
     relativeHumidity: number;
@@ -32,294 +46,295 @@ type TelemetryLog = {
 type Inverter = {
     id: string;
     location: string;
+    locality: string;
+    firmwareVersion: string;
+    signalStrength: number;
+    gridVoltageBaseline: number;
     healthState: number;
+    lastSeen: string;
     telemetry: TelemetryLog[];
-    tickets: any[];
+    tickets: { id: string; description: string; priority: string; status: string; createdAt: string }[];
 };
 
-export default function Dashboard() {
-    const [inverters, setInverters] = useState<Inverter[]>([]);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [isSimulating, setIsSimulating] = useState(false);
-    const [activeTab, setActiveTab] = useState<'primary' | 'environmental' | 'power' | 'subsystem'>('primary');
+// =========================================================================
+// CONSTANTS
+// =========================================================================
+const LOCALITIES = [
+    'All Localities',
+    'Zone A: Northern Industrial Estate',
+    'Zone B: Western Solar Corridor',
+    'Zone C: Rural Grid Sector 4',
+    'Zone D: Urban Commercial Ops',
+];
 
-    // Polling API
-    useEffect(() => {
-        const fetchData = async () => {
-            const res = await fetch('/api/telemetry');
-            if (res.ok) {
-                const data = await res.json();
-                setInverters(data.inverters);
-                if (!selectedId && data.inverters.length > 0) {
-                    setSelectedId(data.inverters[0].id);
-                }
-            }
-        };
-        fetchData();
-        const interval = setInterval(fetchData, 2000);
-        return () => clearInterval(interval);
-    }, [selectedId]);
+const HEALTH_LABELS: Record<number, { label: string; color: string }> = {
+    0: { label: 'NOMINAL', color: 'text-green-400' },
+    1: { label: 'WARNING', color: 'text-amber-400' },
+    2: { label: 'CRITICAL', color: 'text-red-400' },
+    3: { label: 'IMMINENT FAILURE', color: 'text-red-600' },
+};
 
-    // Causal Physics Simulation Engine
-    useEffect(() => {
-        let simInterval: NodeJS.Timeout;
-        
-        // Initial State (Healthy)
-        let tick = 0;
-        let dustIndex = 10.0;
-        let ambientTemp = 35.0;
-        let cumulativeThermalStress = 0.0;
-        let actualFanRpm = 3000;
-        let dcBusRippleVoltage = 5.0;
-        let insulationResistance = 10.0;
-        let relativeHumidity = 40.0;
-        let conversionEfficiency = 98.5;
+// =========================================================================
+// METRIC CARD COMPONENT
+// =========================================================================
+function MetricCard({
+    title, metricKey, value, unit,
+}: {
+    title: string; metricKey: string; value: number; unit: string;
+}) {
+    const { state, percentage, color } = evaluateMetric(metricKey, value);
 
-        if (isSimulating) {
-            simInterval = setInterval(async () => {
-                tick++;
-                
-                // CAUSAL PHYSICS:
-                // 1. Dust accumulates over time
-                dustIndex += Math.random() * 2;
-                
-                // 2. High dust blocks airflow, reducing fan efficiency
-                if (dustIndex > 40) actualFanRpm -= Math.random() * 100;
-                
-                // 3. Poor airflow causes Ambient and Heatsink Temps to rise
-                let heatsinkTemp = ambientTemp + 10 + (3000 - actualFanRpm) / 100;
-                if (dustIndex > 60) ambientTemp += Math.random();
-                
-                let heatsinkDelta = heatsinkTemp - ambientTemp;
-
-                // 4. Heat causes Cumulative Thermal Stress to rise rapidly
-                if (heatsinkTemp > 60) {
-                    cumulativeThermalStress += (heatsinkTemp - 60) * 0.1;
-                }
-
-                // 5. Thermal stress destroys DC Capacitors (Ripple Voltage rises) and drops Efficiency
-                dcBusRippleVoltage += cumulativeThermalStress * 0.05;
-                conversionEfficiency -= cumulativeThermalStress * 0.02;
-                if (conversionEfficiency < 0) conversionEfficiency = 0;
-
-                // 6. Environmental Moisture (Humidity spikes) affect Insulation Resistance
-                if (tick > 15) {
-                    relativeHumidity += 2.0; // Storm rolls in
-                    if (relativeHumidity > 80) {
-                        insulationResistance -= Math.random() * 0.5;
-                        if (insulationResistance < 0.1) insulationResistance = 0.1;
-                    }
-                }
-
-                // 7. Calculate RUL Velocity (rate of degradation)
-                let rulVelocity = (dcBusRippleVoltage - 5.0) + (10.0 - insulationResistance);
-
-                // Determine State based on parameters
-                let state = 'Healthy';
-                if (rulVelocity > 5 || relativeHumidity > 75) state = 'Warning';
-                if (dcBusRippleVoltage > 12 || insulationResistance < 1.0) state = 'Critical';
-                if (dcBusRippleVoltage > 18) state = 'Imminent Failure';
-
-                const payload = {
-                    node_id: 'INV_ESP32_001',
-                    location: 'Sector 5 - Alpha Unit',
-                    health_state: state,
-                    
-                    ambient_temp: ambientTemp,
-                    relative_humidity: relativeHumidity,
-                    dust_index: dustIndex,
-                    solar_irradiance: 800 + Math.random() * 100,
-                    
-                    dc_bus_ripple_voltage: dcBusRippleVoltage,
-                    dc_bus_ripple_current: dcBusRippleVoltage * 1.5,
-                    activePower: 50000 - (100 - conversionEfficiency) * 100,
-                    reactivePower: 500 + rulVelocity * 10,
-                    ac_frequency_drift: 0.01 * rulVelocity,
-                    insulation_resistance: insulationResistance,
-                    thd: 2.5 + (dcBusRippleVoltage - 5.0) * 0.2,
-                    mains_surges: Math.floor(Math.random() * 2),
-                    
-                    junction_temp: heatsinkTemp + 15,
-                    heatsink_temp: heatsinkTemp,
-                    heatsink_delta: heatsinkDelta,
-                    mosfet_on_resistance: 5.0 + cumulativeThermalStress * 0.01,
-                    igbt_vgeth: 5.5 - cumulativeThermalStress * 0.005,
-                    commanded_fan_rpm: 3000,
-                    actual_fan_rpm: Math.max(0, actualFanRpm),
-                    smps_output_voltage: 24.0 - (rulVelocity * 0.1),
-                    capacitor_esr: 10.0 + (dcBusRippleVoltage - 5.0) * 2,
-                    
-                    conversion_efficiency: conversionEfficiency,
-                    cumulative_thermal_stress: cumulativeThermalStress,
-                    rul_velocity: rulVelocity
-                };
-                
-                await fetch('/api/telemetry', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                if (state === 'Imminent Failure' || tick > 45) {
-                    setIsSimulating(false);
-                }
-            }, 1000);
-        }
-        return () => clearInterval(simInterval);
-    }, [isSimulating]);
-
-    const activeNode = inverters.find(i => i.id === selectedId);
-    
-    // Derived values
-    const rulPercentage = activeNode ? Math.max(0, 100 - (activeNode.healthState * 33)) : 100;
-    const rulColor = activeNode?.healthState === 0 ? 'bg-accent-green' : 
-                     activeNode?.healthState === 1 ? 'bg-accent-yellow' : 'bg-accent-red';
-
-    const latest = activeNode?.telemetry[0];
+    const precision =
+        metricKey === 'acFreqDrift' ? 3 :
+        metricKey.includes('Power') || metricKey.includes('Rpm') || metricKey === 'solarIrradiance' ? 0 : 1;
 
     return (
-        <div className="flex h-screen overflow-hidden text-sm">
-            {/* Sidebar */}
-            <aside className="w-64 glass-panel m-4 flex flex-col shrink-0">
-                <div className="p-4 border-b border-glass-border">
-                    <h1 className="text-xl font-bold text-accent-blue tracking-wider">MICROTEK</h1>
-                    <p className="text-xs text-gray-400">Enterprise Fleet Ops</p>
+        <div className="metric-card relative pb-6 flex flex-col justify-between overflow-hidden">
+            <div className="flex justify-between items-start mb-2">
+                <div className="metric-label">{title}</div>
+                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold tracking-widest text-black ${color}`}>
+                    {state}
+                </span>
+            </div>
+            <div className="metric-value">
+                {value.toFixed(precision)}
+                <span className="text-xs text-gray-500 ml-1">{unit}</span>
+            </div>
+            {/* Range bar */}
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/5 overflow-hidden rounded-b">
+                <div
+                    className={`h-full transition-all duration-300 ${color}`}
+                    style={{ width: `${percentage}%` }}
+                />
+            </div>
+        </div>
+    );
+}
+
+// =========================================================================
+// STATUS DOT HELPER
+// =========================================================================
+function StatusDot({ state }: { state?: number }) {
+    const cls =
+        state === 0 ? 'bg-green-400' :
+        state === 1 ? 'bg-amber-400 animate-pulse' :
+        'bg-red-500 animate-pulse';
+    return <span className={`inline-block w-2 h-2 rounded-full ${cls}`} />;
+}
+
+// =========================================================================
+// MAIN DASHBOARD
+// =========================================================================
+export default function Dashboard() {
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedLocality, setSelectedLocality] = useState('All Localities');
+
+    const { data } = useSWR(`/api/fleet${selectedId ? `?nodeId=${selectedId}` : ''}`, fetcher, {
+        refreshInterval: 500,
+        dedupeInterval: 400,
+        revalidateOnFocus: false
+    });
+
+    const fleetStatus: any[] = data?.fleetStatus || [];
+    const activeNode: Inverter | null = data?.activeNode || null;
+    const globalTickets: any[] = data?.globalTickets || [];
+    const pollMs = data?._pollMs || 0;
+    const lastUpdated = data ? new Date() : null;
+
+    useEffect(() => {
+        if (!selectedId && fleetStatus.length > 0) {
+            setSelectedId(fleetStatus[0].id);
+        }
+    }, [fleetStatus, selectedId]);
+
+    // =========================================================================
+    // DERIVED STATE
+    // =========================================================================
+    const latest = activeNode?.telemetry?.[0];
+    const rulPct = activeNode ? Math.max(0, 100 - activeNode.healthState * 33) : 100;
+    const rulColor = activeNode?.healthState === 0 ? 'bg-green-500' : activeNode?.healthState === 1 ? 'bg-amber-500' : 'bg-red-500';
+    const healthInfo = HEALTH_LABELS[activeNode?.healthState ?? 0] ?? HEALTH_LABELS[0];
+
+    const filtered = fleetStatus.filter(inv => {
+        const matchSearch = inv.id.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchLocale = selectedLocality === 'All Localities' || inv.locality === selectedLocality;
+        return matchSearch && matchLocale;
+    });
+
+    return (
+        <div className="flex h-full overflow-hidden text-sm">
+            {/* ======================== SIDEBAR ======================== */}
+            <aside className="w-72 glass-panel m-4 flex flex-col shrink-0">
+                {/* Sidebar header with live pulse */}
+                <div className="p-4 border-b border-glass-border space-y-3">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs uppercase tracking-widest text-gray-400">
+                            Fleet Nodes <span className="text-gray-600">({filtered.length})</span>
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                            <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                            </span>
+                            <span className="text-[10px] font-mono text-green-400">
+                                {lastUpdated ? lastUpdated.toLocaleTimeString() : '—'}
+                            </span>
+                            {pollMs > 0 && (
+                                <span className="text-[9px] font-mono text-gray-600 ml-1">{pollMs}ms</span>
+                            )}
+                        </div>
+                    </div>
+
+                    <input
+                        type="text"
+                        placeholder="Search Node ID…"
+                        className="w-full bg-black/30 border border-glass-border rounded px-3 py-2 text-xs text-gray-200 outline-none focus:border-blue-500 transition-colors"
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                    />
+                    <select
+                        className="w-full bg-black/30 border border-glass-border rounded px-3 py-2 text-xs text-gray-200 outline-none focus:border-blue-500 transition-colors"
+                        value={selectedLocality}
+                        onChange={e => setSelectedLocality(e.target.value)}
+                    >
+                        {LOCALITIES.map(loc => (
+                            <option key={loc} value={loc} className="bg-[#06080F]">{loc}</option>
+                        ))}
+                    </select>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                    {inverters.length === 0 && <p className="text-sm text-gray-400 italic">No nodes detected.</p>}
-                    {inverters.map(inv => (
-                        <div 
-                            key={inv.id} 
+
+                {/* Node list */}
+                <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+                    {filtered.length === 0 && (
+                        <p className="text-xs text-gray-500 italic p-2">No nodes match filter.</p>
+                    )}
+                    {filtered.map(inv => (
+                        <div
+                            key={inv.id}
                             onClick={() => setSelectedId(inv.id)}
-                            className={`p-3 rounded-lg cursor-pointer transition-colors ${selectedId === inv.id ? 'bg-accent-blue/20 border border-accent-blue' : 'hover:bg-white/5 border border-transparent'}`}
+                            className={`node-item flex items-center justify-between ${selectedId === inv.id ? 'active' : ''}`}
                         >
-                            <div className="font-semibold">{inv.id}</div>
-                            <div className="text-xs text-gray-400 flex items-center justify-between mt-1">
-                                <span>{inv.location}</span>
-                                <div className={`w-2 h-2 rounded-full ${inv.healthState === 0 ? 'bg-accent-green' : inv.healthState === 1 ? 'bg-accent-yellow' : 'bg-accent-red'}`}></div>
+                            <div>
+                                <div className="font-semibold text-xs">{inv.id}</div>
+                                <div className="text-[10px] text-gray-500 mt-0.5">{inv.locality.split(':')[0]}</div>
                             </div>
+                            <StatusDot state={inv.healthState} />
                         </div>
                     ))}
                 </div>
-                <div className="p-4 border-t border-glass-border">
-                    <button 
-                        onClick={() => setIsSimulating(!isSimulating)}
-                        className={`w-full py-2 rounded font-bold transition-colors ${isSimulating ? 'bg-accent-red hover:bg-red-600 text-white' : 'bg-accent-blue hover:bg-blue-600 text-white'}`}
-                    >
-                        {isSimulating ? 'Stop Causal Sim' : 'Start Causal Sim'}
-                    </button>
-                </div>
             </aside>
 
-            {/* Main Content */}
-            <main className="flex-1 m-4 ml-0 flex flex-col space-y-4 overflow-hidden">
-                {activeNode ? (
+            {/* ======================== MAIN PANEL ======================== */}
+            <main className="flex-1 m-4 ml-0 flex flex-col overflow-y-auto pr-1 pb-4 space-y-4">
+                {activeNode && latest ? (
                     <>
-                        {/* Header & RUL */}
-                        <section className="glass-panel p-6 shrink-0">
-                            <div className="flex justify-between items-end mb-4">
-                                <div>
-                                    <h2 className="text-3xl font-bold">{activeNode.id}</h2>
-                                    <p className="text-gray-400">{activeNode.location}</p>
+                        {/* ---- Node header ---- */}
+                        <section className="glass-panel p-4 flex items-start justify-between">
+                            <div>
+                                <div className="flex items-center gap-3 mb-1">
+                                    <h2 className="text-2xl font-bold tracking-wide">{activeNode.id}</h2>
+                                    <StatusDot state={activeNode.healthState} />
+                                    <span className={`text-xs font-bold ${healthInfo.color}`}>{healthInfo.label}</span>
                                 </div>
-                                <div className="text-right">
-                                    <div className="text-sm text-gray-400 uppercase tracking-widest mb-1">Remaining Useful Life (RUL)</div>
-                                    <div className="text-2xl font-bold">{rulPercentage}%</div>
-                                </div>
+                                <p className="text-gray-400 text-xs">{activeNode.locality}</p>
                             </div>
-                            <div className="w-full h-4 bg-gray-800 rounded-full overflow-hidden">
-                                <div className={`h-full transition-all duration-1000 ${rulColor}`} style={{ width: `${rulPercentage}%` }}></div>
+                            <div className="flex gap-6 text-xs text-right">
+                                {[
+                                    { label: 'Firmware', val: activeNode.firmwareVersion },
+                                    { label: 'Signal', val: `${activeNode.signalStrength} dBm` },
+                                    { label: 'Grid Baseline', val: `${activeNode.gridVoltageBaseline.toFixed(1)} V` },
+                                    { label: 'Last Seen', val: new Date(activeNode.lastSeen).toLocaleTimeString() },
+                                ].map(m => (
+                                    <div key={m.label}>
+                                        <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">{m.label}</div>
+                                        <div className="text-gray-200 font-mono">{m.val}</div>
+                                    </div>
+                                ))}
                             </div>
                         </section>
 
-                        {/* Navigation Tabs */}
-                        <div className="flex space-x-2 px-2 shrink-0">
-                            {['primary', 'environmental', 'power', 'subsystem'].map(tab => (
-                                <button 
-                                    key={tab}
-                                    onClick={() => setActiveTab(tab as any)}
-                                    className={`px-4 py-2 rounded-t-lg font-semibold capitalize transition-colors ${activeTab === tab ? 'bg-glass-panel border-t border-l border-r border-glass-border text-white' : 'bg-black/20 text-gray-400 hover:text-white'}`}
-                                >
-                                    {tab === 'primary' ? 'Primary Health' : tab}
-                                </button>
-                            ))}
+                        {/* ---- RUL health bar ---- */}
+                        <div className="glass-panel px-4 py-3 flex items-center gap-4">
+                            <span className="text-xs text-gray-400 uppercase tracking-widest shrink-0">RUL Estimate</span>
+                            <div className="flex-1 h-2 bg-white/5 rounded overflow-hidden">
+                                <div className={`h-full rounded transition-all duration-500 ${rulColor}`} style={{ width: `${rulPct}%` }} />
+                            </div>
+                            <span className={`text-xs font-bold ${healthInfo.color}`}>{rulPct}%</span>
                         </div>
 
-                        {/* Tab Content */}
-                        <div className="flex-1 overflow-y-auto pr-2 pb-2">
-                            {activeTab === 'primary' && (
-                                <div className="flex flex-col h-full space-y-4">
-                                    <section className="grid grid-cols-4 gap-4 shrink-0">
-                                        <div className="glass-panel p-4">
-                                            <h3 className="text-gray-400 text-xs uppercase">Conversion Eff.</h3>
-                                            <div className="text-2xl font-bold my-1">{latest?.conversionEfficiency.toFixed(1) || '0'}%</div>
-                                        </div>
-                                        <div className="glass-panel p-4">
-                                            <h3 className="text-gray-400 text-xs uppercase">DC Ripple (V)</h3>
-                                            <div className="text-2xl font-bold my-1">{latest?.dcBusRippleVoltage.toFixed(2) || '0'}</div>
-                                        </div>
-                                        <div className="glass-panel p-4">
-                                            <h3 className="text-gray-400 text-xs uppercase">RUL Velocity</h3>
-                                            <div className="text-2xl font-bold my-1">{latest?.rulVelocity.toFixed(2) || '0'}</div>
-                                        </div>
-                                        <div className="glass-panel p-4">
-                                            <h3 className="text-gray-400 text-xs uppercase">Insulation (MΩ)</h3>
-                                            <div className="text-2xl font-bold my-1 text-accent-yellow">{latest?.insulationResistance.toFixed(1) || '0'}</div>
-                                        </div>
-                                    </section>
-                                    
-                                    {/* Dispatch Terminal */}
-                                    <section className="glass-panel flex-1 flex flex-col min-h-[200px]">
-                                        <div className="bg-black/40 px-4 py-2 border-b border-glass-border font-mono text-xs text-gray-300">Live Automated Dispatch Terminal</div>
-                                        <div className="p-4 font-mono text-sm space-y-2 overflow-y-auto">
-                                            {activeNode.tickets.length === 0 ? (
-                                                <div className="text-gray-500 italic">No dispatch tickets open.</div>
-                                            ) : (
-                                                activeNode.tickets.map(ticket => (
-                                                    <div key={ticket.id} className="border-l-2 border-accent-red pl-3 bg-red-900/20 p-2 rounded">
-                                                        <span className="text-accent-red font-bold">[{ticket.priority}]</span> {ticket.id} 
-                                                        <span className="text-gray-400 text-xs ml-2">{new Date(ticket.createdAt).toLocaleTimeString()}</span>
-                                                        <div className="text-gray-200 mt-1">{ticket.description}</div>
-                                                    </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    </section>
-                                </div>
-                            )}
+                        {/* ---- Primary Health ---- */}
+                        <section className="glass-panel p-4">
+                            <div className="section-header"><span className="status-dot green" /><h2>Primary Health Metrics</h2></div>
+                            <div className="grid grid-cols-4 gap-3">
+                                <MetricCard title="Conversion Efficiency" metricKey="conversionEfficiency" value={latest.conversionEfficiency} unit="%" />
+                                <MetricCard title="DC Bus Ripple" metricKey="dcRipple" value={latest.dcBusRippleVoltage} unit="V" />
+                                <MetricCard title="RUL Velocity" metricKey="rulVelocity" value={latest.rulVelocity} unit="" />
+                                <MetricCard title="Insulation" metricKey="insulation" value={latest.insulationResistance} unit="MΩ" />
+                            </div>
+                        </section>
 
-                            {activeTab === 'environmental' && (
-                                <section className="grid grid-cols-2 gap-4">
-                                    <div className="glass-panel p-5"><h3 className="text-gray-400 uppercase text-xs">Dust Index</h3><div className="text-3xl font-bold mt-2">{latest?.dustIndex.toFixed(1)}</div></div>
-                                    <div className="glass-panel p-5"><h3 className="text-gray-400 uppercase text-xs">Relative Humidity</h3><div className="text-3xl font-bold mt-2">{latest?.relativeHumidity.toFixed(1)}%</div></div>
-                                    <div className="glass-panel p-5"><h3 className="text-gray-400 uppercase text-xs">Ambient Temp</h3><div className="text-3xl font-bold mt-2">{latest?.ambientTemp.toFixed(1)}°C</div></div>
-                                    <div className="glass-panel p-5"><h3 className="text-gray-400 uppercase text-xs">Solar Irradiance</h3><div className="text-3xl font-bold mt-2">{latest?.solarIrradiance.toFixed(0)} W/m²</div></div>
-                                </section>
-                            )}
+                        {/* ---- Environmental ---- */}
+                        <section className="glass-panel p-4">
+                            <div className="section-header"><span className="status-dot green" /><h2>Environmental Parameters</h2></div>
+                            <div className="grid grid-cols-4 gap-3">
+                                <MetricCard title="Ambient Temp" metricKey="ambientTemp" value={latest.ambientTemp} unit="°C" />
+                                <MetricCard title="Relative Humidity" metricKey="relativeHumidity" value={latest.relativeHumidity} unit="%" />
+                                <MetricCard title="Dust Index" metricKey="dustIndex" value={latest.dustIndex} unit="" />
+                                <MetricCard title="Solar Irradiance" metricKey="solarIrradiance" value={latest.solarIrradiance} unit="W/m²" />
+                            </div>
+                        </section>
 
-                            {activeTab === 'power' && (
-                                <section className="grid grid-cols-2 gap-4">
-                                    <div className="glass-panel p-5"><h3 className="text-gray-400 uppercase text-xs">THD (Total Harmonic Dist.)</h3><div className="text-3xl font-bold mt-2">{latest?.thd.toFixed(2)}%</div></div>
-                                    <div className="glass-panel p-5"><h3 className="text-gray-400 uppercase text-xs">AC Freq Drift</h3><div className="text-3xl font-bold mt-2">{latest?.acFrequencyDrift.toFixed(3)} Hz</div></div>
-                                    <div className="glass-panel p-5"><h3 className="text-gray-400 uppercase text-xs">Active Power (P)</h3><div className="text-3xl font-bold mt-2">{latest?.activePower?.toFixed(0)} W</div></div>
-                                    <div className="glass-panel p-5"><h3 className="text-gray-400 uppercase text-xs">Reactive Power (Q)</h3><div className="text-3xl font-bold mt-2">{latest?.reactivePower?.toFixed(0)} VAR</div></div>
-                                </section>
-                            )}
+                        {/* ---- Power Grid ---- */}
+                        <section className="glass-panel p-4">
+                            <div className="section-header"><span className="status-dot blue" /><h2>Power Grid Telemetry</h2></div>
+                            <div className="grid grid-cols-4 gap-3">
+                                <MetricCard title="Active Power" metricKey="activePower" value={latest.activePower} unit="W" />
+                                <MetricCard title="Reactive Power" metricKey="reactivePower" value={latest.reactivePower} unit="VAR" />
+                                <MetricCard title="THD" metricKey="thd" value={latest.thd} unit="%" />
+                                <MetricCard title="AC Freq Drift" metricKey="acFreqDrift" value={latest.acFrequencyDrift} unit="Hz" />
+                            </div>
+                        </section>
 
-                            {activeTab === 'subsystem' && (
-                                <section className="grid grid-cols-2 gap-4">
-                                    <div className="glass-panel p-5"><h3 className="text-gray-400 uppercase text-xs">Heatsink Delta (ΔT)</h3><div className="text-3xl font-bold mt-2">{latest?.heatsinkDelta.toFixed(1)}°C</div></div>
-                                    <div className="glass-panel p-5"><h3 className="text-gray-400 uppercase text-xs">Fan RPM (Cmd vs Act)</h3><div className="text-3xl font-bold mt-2">{latest?.commandedFanRpm} / <span className="text-accent-red">{latest?.actualFanRpm}</span></div></div>
-                                    <div className="glass-panel p-5"><h3 className="text-gray-400 uppercase text-xs">SMPS Aux Voltage</h3><div className="text-3xl font-bold mt-2">{latest?.smpsOutputVoltage.toFixed(2)} V</div></div>
-                                    <div className="glass-panel p-5"><h3 className="text-gray-400 uppercase text-xs">MOSFET Rds(on)</h3><div className="text-3xl font-bold mt-2">{latest?.mosfetOnResistance.toFixed(2)} mΩ</div></div>
-                                </section>
-                            )}
-                        </div>
+                        {/* ---- Subsystems ---- */}
+                        <section className="glass-panel p-4">
+                            <div className="section-header"><span className="status-dot purple" /><h2>Subsystem Diagnostics</h2></div>
+                            <div className="grid grid-cols-4 gap-3">
+                                <MetricCard title="Heatsink ΔT" metricKey="heatsinkDeltaT" value={latest.heatsinkDelta} unit="°C" />
+                                <MetricCard title="Fan RPM Delta" metricKey="fanRpmDelta" value={Math.abs(latest.commandedFanRpm - latest.actualFanRpm)} unit="RPM" />
+                                <MetricCard title="SMPS Output" metricKey="smpsOutputVoltage" value={latest.smpsOutputVoltage} unit="V" />
+                                <MetricCard title="MOSFET Rds(on)" metricKey="mosfetOnResistance" value={latest.mosfetOnResistance} unit="mΩ" />
+                            </div>
+                        </section>
+
+                        {/* ---- Dispatch Terminal ---- */}
+                        <section className="glass-panel flex flex-col min-h-[180px]">
+                            <div className="bg-black/40 px-4 py-2 border-b border-glass-border font-mono text-xs text-gray-400 flex items-center justify-between">
+                                <span>Live Automated Dispatch Terminal (Global Feed)</span>
+                                <span className="text-[10px] text-gray-600">{globalTickets.length} recent events</span>
+                            </div>
+                            <div className="p-4 font-mono text-xs space-y-2 overflow-y-auto flex-1">
+                                {globalTickets.length === 0 ? (
+                                    <div className="text-gray-600 italic">No recent dispatch events.</div>
+                                ) : (
+                                    globalTickets.map(ticket => (
+                                        <div key={ticket.id} className="ticket-entry mb-3 border-l-2 border-white/10 pl-2">
+                                            <span className={`font-bold ${ticket.status === 'CLOSED' ? 'text-green-500' : ticket.priority === 'CRITICAL' ? 'text-red-400' : 'text-amber-400'}`}>
+                                                [{ticket.status === 'CLOSED' ? 'RESOLVED' : ticket.priority}]
+                                            </span>{' '}
+                                            <span className="text-gray-400">Node: {ticket.inverterId}</span>
+                                            <span className="text-gray-600 ml-2 text-[10px]">{new Date(ticket.createdAt).toLocaleTimeString()}</span>
+                                            <div className="text-gray-300 mt-1 leading-relaxed whitespace-pre-wrap">{ticket.description}</div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </section>
                     </>
                 ) : (
-                    <div className="glass-panel flex-1 flex items-center justify-center text-gray-500 flex-col">
-                        <p>No Inverter Node Selected</p>
-                        <p className="text-sm mt-2">Click "Start Causal Sim" to generate test nodes.</p>
+                    <div className="flex-1 flex flex-col items-center justify-center text-gray-600 gap-3">
+                        <div className="text-4xl">📡</div>
+                        <p className="text-sm">{fleetStatus.length === 0 ? 'Connecting to SCADA backend…' : 'Select a node from the sidebar.'}</p>
                     </div>
                 )}
             </main>

@@ -18,14 +18,18 @@ model User {
 }
 
 model Inverter {
-  id           String           @id // e.g., INV_ESP32_001
-  location     String
-  healthState  Int              @default(0) // 0: Healthy, 1: Warning, 2: Critical, 3: Imminent Failure
-  lastSeen     DateTime         @default(now())
-  telemetry    TelemetryLog[]
-  tickets      DispatchTicket[]
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id                  String           @id // e.g., INV_ESP32_001
+  location            String
+  locality            String           @default("Unknown")
+  firmwareVersion     String           @default("v1.0.0")
+  signalStrength      Int              @default(-70)
+  gridVoltageBaseline Float            @default(230.0)
+  healthState         Int              @default(0) // 0: Healthy, 1: Warning, 2: Critical, 3: Imminent Failure
+  lastSeen            DateTime         @default(now())
+  telemetry           TelemetryLog[]
+  tickets             DispatchTicket[]
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 }
 
 model TelemetryLog {

@@ -114,7 +114,8 @@ export async function GET() {
             where: { status: 'OPEN' },
             orderBy: { createdAt: 'desc' }
         }
-      }
+      },
+      orderBy: { id: 'asc' }
     });
     return NextResponse.json({ success: true, inverters });
   } catch (error) {
