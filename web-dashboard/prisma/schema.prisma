@@ -32,16 +32,39 @@ model TelemetryLog {
   id                   Int      @id @default(autoincrement())
   inverterId           String
   inverter             Inverter @relation(fields: [inverterId], references: [id])
-  dcBusRippleVoltage   Float
-  capacitorEsr         Float
-  junctionTemp         Float
-  mosfetOnResistance   Float
-  conversionEfficiency Float
-  heatsinkTemp         Float
-  commandedFanRpm      Int
-  actualFanRpm         Int
-  thd                  Float
-  mainsSurges          Int
+  
+  // Environmental & Site
+  ambientTemp          Float    @default(0.0)
+  relativeHumidity     Float    @default(0.0)
+  dustIndex            Float    @default(0.0)
+  solarIrradiance      Float    @default(0.0)
+  
+  // Electrical & Power Quality
+  dcBusRippleVoltage   Float    @default(0.0)
+  dcBusRippleCurrent   Float    @default(0.0)
+  activePower          Float    @default(0.0)
+  reactivePower        Float    @default(0.0)
+  acFrequencyDrift     Float    @default(0.0)
+  insulationResistance Float    @default(0.0)
+  thd                  Float    @default(0.0)
+  mainsSurges          Int      @default(0)
+  
+  // Subsystem & Component
+  junctionTemp         Float    @default(0.0)
+  heatsinkTemp         Float    @default(0.0)
+  heatsinkDelta        Float    @default(0.0)
+  mosfetOnResistance   Float    @default(0.0)
+  igbtVgeth            Float    @default(0.0)
+  commandedFanRpm      Int      @default(0)
+  actualFanRpm         Int      @default(0)
+  smpsOutputVoltage    Float    @default(0.0)
+  capacitorEsr         Float    @default(0.0)
+  
+  // Predictive Metrics
+  conversionEfficiency Float    @default(0.0)
+  cumulativeThermalStress Float @default(0.0)
+  rulVelocity          Float    @default(0.0)
+  
   timestamp            DateTime @default(now())
 }
 
