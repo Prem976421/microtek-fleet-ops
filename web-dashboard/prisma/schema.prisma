@@ -1,0 +1,57 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String?
+  role      String   @default("TECHNICIAN") // ADMIN or TECHNICIAN
+  createdAt DateTime @default(now())
+}
+
+model Inverter {
+  id           String           @id // e.g., INV_ESP32_001
+  location     String
+  healthState  Int              @default(0) // 0: Healthy, 1: Warning, 2: Critical, 3: Imminent Failure
+  lastSeen     DateTime         @default(now())
+  telemetry    TelemetryLog[]
+  tickets      DispatchTicket[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model TelemetryLog {
+  id                   Int      @id @default(autoincrement())
+  inverterId           String
+  inverter             Inverter @relation(fields: [inverterId], references: [id])
+  dcBusRippleVoltage   Float
+  capacitorEsr         Float
+  junctionTemp         Float
+  mosfetOnResistance   Float
+  conversionEfficiency Float
+  heatsinkTemp         Float
+  commandedFanRpm      Int
+  actualFanRpm         Int
+  thd                  Float
+  mainsSurges          Int
+  timestamp            DateTime @default(now())
+}
+
+model DispatchTicket {
+  id          String   @id @default(uuid()) // e.g. TKT-9921
+  inverterId  String
+  inverter    Inverter @relation(fields: [inverterId], references: [id])
+  status      String   @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED
+  description String
+  priority    String   @default("HIGH") // ROUTINE, HIGH, EMERGENCY
+  createdAt   DateTime @default(now())
+  resolvedAt  DateTime?
+}
