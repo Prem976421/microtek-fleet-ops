@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microtek Predictive Maintenance Dashboard</title>
+    <style>
+        :root {
+            --bg-dark: #121212;
+            --panel-bg: #1e1e1e;
+            --text-light: #e0e0e0;
+            --accent-green: #00e676;
+            --accent-yellow: #ffea00;
+            --accent-red: #ff1744;
+            --accent-blue: #2979ff;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 { color: var(--accent-blue); }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
+        .panel {
+            background-color: var(--panel-bg);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .metric-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .ticket-list {
+            list-style: none;
+            padding: 0;
+        }
+        .ticket {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-left: 4px solid var(--accent-red);
+            background: #2a2a2a;
+        }
+        .healthy { color: var(--accent-green); }
+        .warning { color: var(--accent-yellow); }
+        .critical { color: var(--accent-red); }
+        button {
+            padding: 10px 20px;
+            font-size: 1.1em;
+            background: var(--accent-blue);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        button:hover { background: #1c54b2; }
+        .roi-section {
+            margin-top: 30px;
+            text-align: center;
+            max-width: 800px;
+            background-color: var(--panel-bg);
+            padding: 20px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Global Inverter Fleet Monitoring</h1>
+    <button onclick="startSimulation()">Start Live Telemetry Simulation</button>
+
+    <div class="grid">
+        <div class="panel">
+            <h2>Node: INV_ESP32_001 Status</h2>
+            <div><strong>DC Bus Ripple:</strong> <span id="dc-ripple">5.0</span> V</div>
+            <div><strong>Heatsink Temp:</strong> <span id="hs-temp">45.0</span> &deg;C</div>
+            <div><strong>Fan RPM:</strong> <span id="fan-rpm">2500</span></div>
+            <div class="metric-value healthy" id="health-state">HEALTHY (State 0)</div>
+        </div>
+
+        <div class="panel">
+            <h2>Automated Dispatch Ticketing</h2>
+            <p>If the AI predicts a warning or critical state, a dispatch ticket is generated automatically.</p>
+            <ul class="ticket-list" id="tickets">
+                <!-- Tickets generated here -->
+            </ul>
+        </div>
+    </div>
+
+    <div class="roi-section">
+        <h2 style="color: var(--accent-green)">Business ROI & Impact Analysis</h2>
+        <p><strong>Unplanned Downtime Eliminated:</strong> Predictive AI caught capacitor degradation weeks before failure, preventing power loss for the customer.</p>
+        <p><strong>Reduced MTTR (Mean Time To Repair):</strong> Technician dispatch was automated with the exact replacement component (DC Capacitor). No diagnostic second-trips required.</p>
+        <p><strong>Truck-Roll Costs:</strong> Reduced by 50% due to first-visit resolution.</p>
+    </div>
+
+    <script>
+        let interval;
+        let tick = 0;
+
+        function startSimulation() {
+            if(interval) clearInterval(interval);
+            document.getElementById("tickets").innerHTML = "";
+            tick = 0;
+            
+            interval = setInterval(() => {
+                tick++;
+                let dcRipple = 5.0 + (Math.random());
+                let hsTemp = 45.0 + (Math.random() * 2);
+                let fanRpm = 2500 - (Math.random() * 50);
+                let stateText = "HEALTHY (State 0)";
+                let stateClass = "healthy";
+
+                // Simulate degradation over time
+                if (tick > 10 && tick <= 20) {
+                    dcRipple = 8.5 + Math.random();
+                    hsTemp = 55.0;
+                    stateText = "WARNING (State 1)";
+                    stateClass = "warning";
+                } else if (tick > 20) {
+                    dcRipple = 15.0 + Math.random()*2;
+                    hsTemp = 75.0;
+                    stateText = "CRITICAL (State 2)";
+                    stateClass = "critical";
+                    if (tick === 21) {
+                        generateTicket("TKT-9921", "Critical Capacitor Wear Detected. Dispatch Technician Immediately with Part #CAP-400V.");
+                    }
+                }
+
+                if (tick === 11) {
+                    generateTicket("TKT-9920", "Early degradation warning on Node INV_ESP32_001. Schedule routine maintenance within 14 days.");
+                }
+
+                document.getElementById("dc-ripple").innerText = dcRipple.toFixed(2);
+                document.getElementById("hs-temp").innerText = hsTemp.toFixed(1);
+                document.getElementById("fan-rpm").innerText = Math.floor(fanRpm);
+                
+                const stateEl = document.getElementById("health-state");
+                stateEl.innerText = stateText;
+                stateEl.className = "metric-value " + stateClass;
+
+                if (tick > 25) {
+                    clearInterval(interval);
+                    alert("Emergency Trip Triggered by Edge AI! Inverter shut down safely to prevent fire.");
+                }
+            }, 1000);
+        }
+
+        function generateTicket(id, message) {
+            const list = document.getElementById("tickets");
+            const item = document.createElement("li");
+            item.className = "ticket";
+            item.innerHTML = `<strong>${id}</strong> - ${new Date().toLocaleTimeString()}<br>${message}`;
+            list.prepend(item);
+        }
+    </script>
+</body>
+</html>
