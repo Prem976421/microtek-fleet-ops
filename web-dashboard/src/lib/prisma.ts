@@ -1,15 +1,24 @@
 import { PrismaClient } from '@prisma/client'
+import { PrismaLibSql } from '@prisma/adapter-libsql'
+
+// Note: For production PostgreSQL, swap to @prisma/adapter-pg and
+// change DATABASE_URL to a postgres:// connection string.
+const adapter = new PrismaLibSql({
+  url: process.env.DATABASE_URL || 'file:./dev.db',
+})
 
 const prismaClientSingleton = () => {
-  return new PrismaClient()
+  return new PrismaClient({ adapter })
 }
 
-declare global {
-  var prismaGlobal: undefined | ReturnType<typeof prismaClientSingleton>
+type PrismaClientSingleton = ReturnType<typeof prismaClientSingleton>
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClientSingleton | undefined
 }
 
-const prisma = globalThis.prismaGlobal ?? prismaClientSingleton()
+const prisma = globalForPrisma.prisma ?? prismaClientSingleton()
 
 export default prisma
 
-if (process.env.NODE_ENV !== 'production') globalThis.prismaGlobal = prisma
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
