@@ -31,29 +31,42 @@ Microtek Fleet Ops addresses this gap by delivering a production-grade, open-sou
 
 ## System Architecture
 
-```
-+------------------------------------------------------------------+
-|                       MICROTEK FLEET OPS                        |
-|                                                                  |
-|   +------------------+       +------------------------------+   |
-|   | SCADA Simulator  | ----> | SQLite (WAL Mode)            |   |
-|   | scripts/         | 500ms | 38-node Telemetry Store      |   |
-|   | simulate.ts      | ticks | TelemetryLog + Inverter      |   |
-|   +------------------+       +------------------------------+   |
-|                                          |                       |
-|                          +--------------v---------------+        |
-|                          |   Next.js API Routes         |        |
-|                          |   /api/fleet?nodeId=XYZ      |        |
-|                          |   /api/analytics             |        |
-|                          |   (SQLite GROUP BY queries)  |        |
-|                          +--------------+---------------+        |
-|                                         |                        |
-|                          +--------------v---------------+        |
-|                          |   React Frontend (SWR)       |        |
-|                          |   500ms viewport-targeted    |        |
-|                          |   high-frequency polling     |        |
-|                          +------------------------------+        |
-+------------------------------------------------------------------+
+```mermaid
+flowchart TD
+    subgraph SIM ["Simulation Layer"]
+        A["SCADA Physics Simulator\nscripts/simulate.ts\nNode.js + tsx"]
+        A1["38-Node Fleet\n32 Nominal / 4 Warning / 2 Critical"]
+        A2["Diurnal Solar Curve\nGaussian Noise Engine\nThermal Corridor Biasing"]
+        A --> A1
+        A --> A2
+    end
+
+    subgraph DB ["Persistence Layer"]
+        B[("SQLite Database\nWAL Mode\nPrisma ORM")]
+        B1["Inverter\nNode metadata + health state"]
+        B2["TelemetryLog\n25 parameters per tick"]
+        B3["DispatchTicket\nFault lifecycle records"]
+        B --- B1
+        B --- B2
+        B --- B3
+    end
+
+    subgraph API ["API Layer — Next.js App Router"]
+        C1["GET /api/fleet?nodeId=\nLightweight fleet status\n+ targeted telemetry"]
+        C2["GET /api/analytics\nPre-aggregated via\nSQL GROUP BY + Window Functions"]
+    end
+
+    subgraph UI ["Frontend — React + SWR"]
+        D1["Fleet Dashboard\nlocalhost:3000\nPer-node SCADA readout\n500ms SWR polling"]
+        D2["Analytics Dashboard\nlocalhost:3000/analytics\nKPIs · Heatmap · Charts\n500ms SWR polling"]
+    end
+
+    A1 -->|"writes telemetry\nevery 500ms"| B
+    A2 -->|"stochastic fault events\nauto-dispatch tickets"| B
+    B -->|"indexed query\nby inverterId"| C1
+    B -->|"GROUP BY locality\nwindow functions"| C2
+    C1 -->|"fleetStatus\n+ activeNode telemetry"| D1
+    C2 -->|"kpis · timeseries\nheatmap · degradingNodes"| D2
 ```
 
 ### Key Technical Decisions
