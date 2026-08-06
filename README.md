@@ -1,6 +1,6 @@
 <div align="center">
 
-# Microtek Fleet Ops
+ Microtek Fleet Ops
 ### SCADA-Grade Solar Inverter Fleet Management Platform
 
 **Submitted for APOGEE Innovation Challenge 2026**  
