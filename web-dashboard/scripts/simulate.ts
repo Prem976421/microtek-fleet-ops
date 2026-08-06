@@ -271,7 +271,7 @@ function buildPayload(inverterId: string, s: NodeState, weather: ZoneWeather, so
     const basePower = isNight ? 0 : clamp(50000 * (s.efficiency / 100) * sol - thermalDerating, 0, 55000);
     const activePower = weather.brownout
         ? basePower * 0.15
-        : basePower + gauss(0, 0.5);
+        : basePower + gauss(0, basePower * 0.03 + 200); // 3% noise + 200W baseline noise
 
     const acFreqBase = 0.005 * Math.max(0, 100 - s.rul);
     return {
