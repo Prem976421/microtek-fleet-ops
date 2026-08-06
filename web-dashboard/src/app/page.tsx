@@ -2,7 +2,10 @@
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import { evaluateMetric } from '@/lib/thresholds';
-
+import {
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
+    LineChart, Line, ReferenceLine, ScatterChart, Scatter, ZAxis
+} from 'recharts';
 const fetcher = async (url: string) => {
     const t0 = performance.now();
     const res = await fetch(url);
@@ -162,6 +165,12 @@ export default function Dashboard() {
         return matchSearch && matchLocale;
     });
 
+    const chartData = [...(activeNode?.telemetry || [])].reverse().map(t => ({
+        ...t,
+        timestamp: new Date(t.timestamp).getTime(),
+        rul: 100 - t.rulVelocity,
+    }));
+
     return (
         <div className="flex h-full overflow-hidden text-sm">
             {/* ======================== SIDEBAR ======================== */}
@@ -304,6 +313,60 @@ export default function Dashboard() {
                                 <MetricCard title="Fan RPM Delta" metricKey="fanRpmDelta" value={Math.abs(latest.commandedFanRpm - latest.actualFanRpm)} unit="RPM" />
                                 <MetricCard title="SMPS Output" metricKey="smpsOutputVoltage" value={latest.smpsOutputVoltage} unit="V" />
                                 <MetricCard title="MOSFET Rds(on)" metricKey="mosfetOnResistance" value={latest.mosfetOnResistance} unit="mΩ" />
+                            </div>
+                        </section>
+
+                        {/* ---- Advanced Diagnostics & Edge Inference ---- */}
+                        <section className="glass-panel p-4">
+                            <div className="section-header"><span className="status-dot amber" /><h2>Advanced Diagnostics & Edge Inference</h2></div>
+                            <div className="grid grid-cols-3 gap-4" style={{ height: '220px' }}>
+                                {/* 1. RUL Timeline */}
+                                <div className="bg-black/30 p-3 rounded flex flex-col">
+                                    <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-2">Health Index / RUL Timeline</div>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={chartData}>
+                                            <defs>
+                                                <linearGradient id="colorRul" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
+                                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                                                </linearGradient>
+                                            </defs>
+                                            <XAxis dataKey="timestamp" type="number" scale="time" domain={['dataMin', 'dataMax']} hide />
+                                            <YAxis domain={[0, 100]} hide />
+                                            <RechartsTooltip labelFormatter={() => ''} contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '11px' }} />
+                                            <Area type="monotone" dataKey="rul" name="RUL (%)" stroke="#10b981" strokeWidth={2} fill="url(#colorRul)" isAnimationActive={false} />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                </div>
+
+                                {/* 2. Anomaly Edge Score vs Threshold */}
+                                <div className="bg-black/30 p-3 rounded flex flex-col">
+                                    <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-2">Anomaly Score vs Threshold</div>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <LineChart data={chartData}>
+                                            <XAxis dataKey="timestamp" type="number" scale="time" domain={['dataMin', 'dataMax']} hide />
+                                            <YAxis domain={[0, 500]} hide />
+                                            <ReferenceLine y={400} stroke="#ef4444" strokeDasharray="3 3" />
+                                            <RechartsTooltip labelFormatter={() => ''} contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '11px' }} />
+                                            <Line type="stepAfter" dataKey="cumulativeThermalStress" name="Thermal Stress" stroke="#f59e0b" strokeWidth={2} dot={false} isAnimationActive={false} />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </div>
+
+                                {/* 3. Thermal & Electrical Stress Matrix */}
+                                <div className="bg-black/30 p-3 rounded flex flex-col">
+                                    <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-2">Thermal vs THD Matrix</div>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <ScatterChart margin={{ top: 5, right: 5, bottom: 5, left: -25 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                                            <XAxis dataKey="heatsinkTemp" type="number" domain={['auto', 'auto']} stroke="#475569" tick={{ fill: '#94a3b8', fontSize: 9 }} tickLine={false} />
+                                            <YAxis dataKey="thd" type="number" domain={['auto', 'auto']} stroke="#475569" tick={{ fill: '#94a3b8', fontSize: 9 }} tickLine={false} />
+                                            <ZAxis range={[20, 20]} />
+                                            <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '11px' }} />
+                                            <Scatter name="Telemetry" data={chartData} fill="#8b5cf6" isAnimationActive={false} />
+                                        </ScatterChart>
+                                    </ResponsiveContainer>
+                                </div>
                             </div>
                         </section>
 

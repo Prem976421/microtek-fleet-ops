@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
                     lastSeen: true,
                     telemetry: {
                         orderBy: { timestamp: 'desc' },
-                        take: 1, // Only the single latest reading
+                        take: 120, // 60 seconds of history at 500ms intervals
                         select: {
                             ambientTemp: true,
                             relativeHumidity: true,
