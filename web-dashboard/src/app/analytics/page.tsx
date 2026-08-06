@@ -5,7 +5,7 @@ import {
     PieChart, Pie, Cell, Tooltip as RechartsTooltip, Legend,
     ResponsiveContainer,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Label,
-    LineChart, Line
+    AreaChart, Area
 } from 'recharts';
 
 // =========================================================================
@@ -205,7 +205,17 @@ export default function AnalyticsDashboard() {
                 <h3 className="text-xs text-gray-400 uppercase tracking-widest mb-4">Module 3: Energy Efficiency & Capacity Curve</h3>
                 <div className="flex-1 min-h-[260px]">
                     <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={timeseries} margin={{ left: 10, right: 10, bottom: 5 }}>
+                        <AreaChart data={timeseries} margin={{ left: 10, right: 10, bottom: 5 }}>
+                            <defs>
+                                <linearGradient id="colorPower" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/>
+                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                                </linearGradient>
+                                <linearGradient id="colorCap" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1}/>
+                                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                                </linearGradient>
+                            </defs>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                             <XAxis
                                 dataKey="timestamp" type="number" domain={['dataMin', 'dataMax']} scale="time"
@@ -220,9 +230,9 @@ export default function AnalyticsDashboard() {
                             <RechartsTooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(label: any) => new Date(Number(label)).toLocaleTimeString()} />
                             <Legend iconType="circle" iconSize={8} formatter={(val) => <span style={{ color: '#94a3b8', fontSize: '11px' }}>{val}</span>} />
                             
-                            <Line yAxisId="left" type="monotone" dataKey="power" name="Actual Output" stroke="#3b82f6" strokeWidth={2} dot={false} isAnimationActive={false} />
-                            <Line yAxisId="left" type="monotone" dataKey="capacity" name="Theoretical Max" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 5" dot={false} isAnimationActive={false} />
-                        </LineChart>
+                            <Area yAxisId="left" type="monotone" dataKey="capacity" name="Theoretical Max" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 5" fillOpacity={1} fill="url(#colorCap)" isAnimationActive={false} />
+                            <Area yAxisId="left" type="monotone" dataKey="power" name="Actual Output" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorPower)" isAnimationActive={false} />
+                        </AreaChart>
                     </ResponsiveContainer>
                 </div>
             </div>

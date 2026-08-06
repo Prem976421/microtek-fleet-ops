@@ -86,12 +86,25 @@ function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min
 // =========================================================================
 // DIURNAL SUN CURVE  (Time-compressed: 5 minutes = 24 hours)
 // =========================================================================
+let currentCloudCover = 0;
+let cloudTarget = 0;
+
 function solarMultiplier(): number {
     const cycleMs = 5 * 60 * 1000;
     const now = Date.now();
     const cycleFrac = (now % cycleMs) / cycleMs; // 0 to 1
+    
+    // Macro cloud cover logic (changes target 5% of the time)
+    if (Math.random() < 0.05) {
+        cloudTarget = Math.random() > 0.4 ? Math.random() * 0.7 : 0; // 60% chance of clouds, up to 70% cover
+    }
+    // Smooth transition
+    currentCloudCover += (cloudTarget - currentCloudCover) * 0.1;
+
     // Fluctuate smoothly between 0.2 and 1.0 (no "night" phase for demo purposes)
-    return 0.2 + 0.8 * ((Math.sin(cycleFrac * 2 * Math.PI) + 1) / 2);
+    const baseCurve = 0.2 + 0.8 * ((Math.sin(cycleFrac * 2 * Math.PI) + 1) / 2);
+    
+    return Math.max(0.1, baseCurve * (1 - currentCloudCover));
 }
 
 // =========================================================================
