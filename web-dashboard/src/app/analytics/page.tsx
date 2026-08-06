@@ -5,7 +5,7 @@ import {
     PieChart, Pie, Cell, Tooltip as RechartsTooltip, Legend,
     ResponsiveContainer,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Label,
-    AreaChart, Area
+    AreaChart, Area, LineChart, Line
 } from 'recharts';
 
 // =========================================================================
