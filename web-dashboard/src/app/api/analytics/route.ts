@@ -5,24 +5,29 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
     try {
-        // 1. Time-Series Aggregation: Group by timestamp
+        // 1. Time-Series Aggregation: Group by timestamp and locality for multi-zone graph
         const timeseriesRaw = await prisma.$queryRaw`
             SELECT 
-                timestamp,
-                SUM(activePower) as totalPower,
-                SUM(55000) as theoreticalCapacity
-            FROM TelemetryLog
-            WHERE timestamp >= datetime('now', '-2 minutes')
-            GROUP BY timestamp
-            ORDER BY timestamp ASC
-            LIMIT 120
+                t.timestamp,
+                i.locality as zone,
+                SUM(t.activePower) as totalPower
+            FROM TelemetryLog t
+            JOIN Inverter i ON t.inverterId = i.id
+            WHERE t.timestamp >= datetime('now', '-2 minutes')
+            GROUP BY t.timestamp, i.locality
+            ORDER BY t.timestamp ASC
         `;
 
-        const timeseries = (timeseriesRaw as any[]).map(row => ({
-            timestamp: new Date(row.timestamp).getTime(),
-            power: Number(row.totalPower) / 1000,
-            capacity: Number(row.theoreticalCapacity) / 1000
-        }));
+        const tsMap = new Map<number, any>();
+        (timeseriesRaw as any[]).forEach(row => {
+            const ts = new Date(row.timestamp).getTime();
+            if (!tsMap.has(ts)) tsMap.set(ts, { timestamp: ts });
+            const entry = tsMap.get(ts);
+            // short zone name for chart e.g. "Zone A"
+            const shortZone = row.zone.split(':')[0];
+            entry[shortZone] = Number(row.totalPower) / 1000;
+        });
+        const timeseries = Array.from(tsMap.values());
 
         // 2. Global KPIs via Aggregation
         const healthCounts = await prisma.inverter.groupBy({

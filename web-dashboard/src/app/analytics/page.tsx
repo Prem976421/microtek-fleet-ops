@@ -202,37 +202,28 @@ export default function AnalyticsDashboard() {
 
             {/* Row 2: Efficiency & Capacity Curve (Mod 3) */}
             <div className="glass-panel p-5 flex flex-col" style={{ minHeight: '340px' }}>
-                <h3 className="text-xs text-gray-400 uppercase tracking-widest mb-4">Module 3: Energy Efficiency & Capacity Curve</h3>
+                <h3 className="text-xs text-gray-400 uppercase tracking-widest mb-4">Module 3: Regional Power Output (Live)</h3>
                 <div className="flex-1 min-h-[260px]">
                     <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={timeseries} margin={{ left: 10, right: 10, bottom: 5 }}>
-                            <defs>
-                                <linearGradient id="colorPower" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/>
-                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                                </linearGradient>
-                                <linearGradient id="colorCap" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1}/>
-                                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
-                                </linearGradient>
-                            </defs>
+                        <LineChart data={timeseries} margin={{ left: 10, right: 10, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                             <XAxis
                                 dataKey="timestamp" type="number" domain={['dataMin', 'dataMax']} scale="time"
                                 stroke="#475569" tick={{ fill: '#94a3b8', fontSize: 10 }} tickLine={false}
                                 tickFormatter={(tick) => new Date(tick).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                             />
-                            <YAxis yAxisId="left" stroke="#475569" tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => Math.round(v).toString()} width={50}>
+                            <YAxis stroke="#475569" tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => Math.round(v).toString()} width={50}>
                                 <Label value="Power (kW)" angle={-90} position="insideLeft" fill="#94a3b8" style={{ fontSize: '11px' }} offset={-10} />
                             </YAxis>
-                            <YAxis yAxisId="right" orientation="right" stroke="#475569" tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} axisLine={false} width={10} />
                             
                             <RechartsTooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(label: any) => new Date(Number(label)).toLocaleTimeString()} />
                             <Legend iconType="circle" iconSize={8} formatter={(val) => <span style={{ color: '#94a3b8', fontSize: '11px' }}>{val}</span>} />
                             
-                            <Area yAxisId="left" type="monotone" dataKey="capacity" name="Theoretical Max" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 5" fillOpacity={1} fill="url(#colorCap)" isAnimationActive={false} />
-                            <Area yAxisId="left" type="monotone" dataKey="power" name="Actual Output" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorPower)" isAnimationActive={false} />
-                        </AreaChart>
+                            <Line type="monotone" dataKey="Zone A" name="Zone A (Nagpur)" stroke="#3b82f6" strokeWidth={2} dot={false} isAnimationActive={false} />
+                            <Line type="monotone" dataKey="Zone B" name="Zone B (Nagpur)" stroke="#8b5cf6" strokeWidth={2} dot={false} isAnimationActive={false} />
+                            <Line type="monotone" dataKey="Zone C" name="Zone C (Chandrapur)" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} />
+                            <Line type="monotone" dataKey="Zone D" name="Zone D (Umred)" stroke="#f59e0b" strokeWidth={2} dot={false} isAnimationActive={false} />
+                        </LineChart>
                     </ResponsiveContainer>
                 </div>
             </div>
