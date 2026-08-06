@@ -90,8 +90,8 @@ function solarMultiplier(): number {
     const cycleMs = 5 * 60 * 1000;
     const now = Date.now();
     const cycleFrac = (now % cycleMs) / cycleMs; // 0 to 1
-    const rawSin = Math.sin(cycleFrac * 2 * Math.PI - Math.PI / 2);
-    return Math.max(0, rawSin);
+    // Fluctuate smoothly between 0.2 and 1.0 (no "night" phase for demo purposes)
+    return 0.2 + 0.8 * ((Math.sin(cycleFrac * 2 * Math.PI) + 1) / 2);
 }
 
 // =========================================================================
